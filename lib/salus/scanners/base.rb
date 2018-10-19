@@ -6,6 +6,8 @@ module Salus::Scanners
     class UnhandledExitStatusError < StandardError; end
     class InvalidScannerInvocationError < StandardError; end
 
+    ShellResult = Struct.new(:stdout, :stderr, :exit_status)
+
     def initialize(repository:, report:, config:)
       @repository = repository
       @report = report
@@ -30,9 +32,7 @@ module Salus::Scanners
     def run_shell(command, env: {}, stdin_data: '')
       # If we're passed a string, convert it to an array beofre passing to capture3
       command = command.split unless command.is_a?(Array)
-
-      stdout, stderr, exit_status = Open3.capture3(env, *command, stdin_data: stdin_data)
-      { stdout: stdout, stderr: stderr, exit_status: exit_status }
+      ShellResult.new(*Open3.capture3(env, *command, stdin_data: stdin_data))
     end
 
     # Add a log to the report that this scanner had no findings.
@@ -67,10 +67,6 @@ module Salus::Scanners
       end
 
       @report.salus_error(name, error_data)
-    end
-
-    def report_recorded_failure?
-      @report.has_failure?(name)
     end
 
     def record_dependency_info(info, dependency_file)

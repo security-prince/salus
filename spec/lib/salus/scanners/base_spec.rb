@@ -21,13 +21,19 @@ describe Salus::Scanners::Base do
   end
 
   describe '#run_shell' do
-    it 'should execute a shell command and give a hash with expected values' do
+    it 'should execute a shell command and returns a ShellResult with expected values' do
       expect(Open3).to receive(:capture3).with({}, 'ls', stdin_data: '').and_return(
         ["file_a\nfile_b\nfile_c", 'error string', 1] # last value is actually a Process::Status
       )
-      expect(scanner.run_shell('ls')).to eq(
-        stdout: "file_a\nfile_b\nfile_c", stderr: 'error string', exit_status: 1
-      )
+
+      expectation =
+        Salus::Scanners::Base::ShellResult.new(
+          "file_a\nfile_b\nfile_c",
+          'error string',
+          1
+        )
+
+      expect(scanner.run_shell('ls')).to eq(expectation)
     end
   end
 

@@ -29,13 +29,16 @@ module Salus::Scanners
       end
 
       vulns = []
+      failed = false
+
       # Scan that mamma jamma, ignoring specified directories
       scanner.scan(ignore: @config['ignore']) do |result|
         report_failure
+        failed = true
         vulns.push(serialize_vuln(result))
       end
 
-      if report_recorded_failure?
+      if failed
         report_stdout(JSON.pretty_generate(vulns))
       else
         report_success
