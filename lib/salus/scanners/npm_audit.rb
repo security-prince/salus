@@ -12,14 +12,17 @@ module Salus::Scanners
 
       created_package_lock = false
       if !@repository.package_lock_json_present?
+        log('Generating a temporary package-lock.json...')
+
         Dir.chdir(@repository.path_to_repo) do
-          report_info(
-            'package_lock_missing',
-            'No package.lock file was found, so we generated one for you. As long as '\
-              'you use yarn, this should be fine. If not, please check in a package-lock.json '\
-              'file into your source control.'
-          )
-          run_shell('npm i --package-lock-only')
+          shell_return = run_shell('npm install --package-lock-only')
+
+          if !shell_return.exit_status.success?
+            log("STDERR:\n```\n#{shell_return.stderr}\n```")
+            report_failure
+            return
+          end
+
           created_package_lock = true
         end
       end
@@ -58,11 +61,9 @@ module Salus::Scanners
     end
 
     def should_run?
-      [
-        @repository.package_json_present?,
-        @repository.package_lock_json_present?,
+      @repository.package_json_present? ||
+        @repository.package_lock_json_present? ||
         @repository.yarn_lock_present?
-      ].any?
     end
   end
 end

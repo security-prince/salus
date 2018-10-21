@@ -16,6 +16,8 @@ module Salus::Scanners
         raise InvalidScannerInvocationError,
               'Cannot report on Ruby gems without a Gemfile or Gemfile.lock'
       end
+
+      report_success
     end
 
     def should_run?

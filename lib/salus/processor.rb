@@ -1,5 +1,6 @@
 require 'uri'
 require 'salus/report'
+require 'salus/scan_report'
 
 module Salus
   class Processor
@@ -25,6 +26,7 @@ module Salus
 
       @report = Report.new(
         report_uris: report_uris,
+        enforced_scanners: @config.enforced_scanners,
         project_name: @config.project_name,
         custom_info: @config.custom_info
       )
@@ -32,7 +34,6 @@ module Salus
       # Add configurations + sources to report - this is very useful for debugging.
       configuration_sources.each { |source| @report.configuration_source(source) }
       @report.configuration_directive('active_scanners', @config.active_scanners.to_a)
-      @report.configuration_directive('enforced_scanners', @config.enforced_scanners.to_a)
       @report.configuration_directive('scanner_configs', @config.scanner_configs)
       @report.configuration_directive('reports', @config.report_uris)
     end
@@ -55,14 +56,21 @@ module Salus
       repository = Repo.new(@repo_path)
 
       Config::SCANNERS.each do |scanner_name, scanner_class|
+        scan_report = ScanReport.new(scanner_name)
+
         scanner = scanner_class.new(
           repository: repository,
-          report: @report,
-          config: @config.scanner_configs[scanner_name] || {}
+          scan_report: scan_report,
+          config: @config.scanner_configs.fetch(scanner_name, {})
         )
 
+        next unless scanner.should_run? && @config.scanner_active?(scanner_name)
+
+        @report.add_scan_report(scan_report)
+
         begin
-          scanner.run if scanner.should_run? && @config.scanner_active?(scanner_name)
+          scan_report.start
+          scanner.run
         rescue StandardError => e
           # We rescue any failure (and report them) to allow the other scanners to run.
           raise e if ENV['RUNNING_SALUS_TESTS']
@@ -74,13 +82,11 @@ module Salus
           )
         end
       end
-
-      report_overall_scan
     end
 
     # Returns an ASCII version of the report.
-    def string_report(verbose: false)
-      @report.to_s(verbose: verbose)
+    def string_report(verbose: false, use_colors: true, wrap: nil)
+      @report.to_s(verbose: verbose, use_colors: use_colors, wrap: wrap)
     end
 
     # Sends to the report to configured report URIs.
@@ -88,32 +94,11 @@ module Salus
       @report.export_report
     end
 
-    # Returns the hash version of the report.
-    def report_hash
-      @report.to_h
-    end
-
-    # Returns true is the scan succeeded.
-    def scan_succeeded?
-      report_h = @report.to_h
-      report_h[:scans]['overall'] && report_h[:scans]['overall']['passed']
+    def passed?
+      @report.passed?
     end
 
     private
-
-    # Adds a true/false status for the success of the "overall" scan.
-    # We report true if all enforced scanners passed, else false.
-    def report_overall_scan
-      failed_scans = @report.to_h[:scans].map do |scan, info|
-        scan if info['passed'] == false
-      end.compact
-
-      if (failed_scans & @config.enforced_scanners.to_a).any?
-        @report.scan_passed('overall', false)
-      else
-        @report.scan_passed('overall', true)
-      end
-    end
 
     # If the URI is local, we will need to prepend the repo_path since
     # the report URI is relative to the root of the repo. This allows us

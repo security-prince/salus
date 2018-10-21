@@ -33,13 +33,13 @@ module Salus::Scanners
 
       # Scan that mamma jamma, ignoring specified directories
       scanner.scan(ignore: @config['ignore']) do |result|
-        report_failure
         failed = true
         vulns.push(serialize_vuln(result))
       end
 
       if failed
-        report_stdout(JSON.pretty_generate(vulns))
+        report_info(:vulnerabilities, vulns)
+        report_failure
       else
         report_success
       end
@@ -58,7 +58,6 @@ module Salus::Scanners
           type: :InsecureSource,
           source: vuln.source
         }
-        report_info("insecure_storage", serialized_vuln)
         serialized_vuln
       when Bundler::Audit::Scanner::UnpatchedGem
         serialized_vuln = {
@@ -74,7 +73,6 @@ module Salus::Scanners
           patched_versions: vuln.advisory.patched_versions.map(&:to_s),
           unaffected_versions: vuln.advisory.unaffected_versions.map(&:to_s)
         }
-        report_info("unpatched_gem", serialized_vuln)
         serialized_vuln
       else
         raise UnvalidGemVulnError, "BundleAudit Scanner received a #{result} from the " \

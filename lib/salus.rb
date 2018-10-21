@@ -51,7 +51,7 @@ module Salus
       end
 
       # System exit with success or failure - useful for CI builds.
-      system_exit(processor.scan_succeeded? ? EXIT_SUCCESS : EXIT_FAILURE)
+      system_exit(processor.passed? ? EXIT_SUCCESS : EXIT_FAILURE)
     end
 
     private

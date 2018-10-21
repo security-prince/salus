@@ -1,18 +1,18 @@
 require 'faraday'
 require 'json'
+require_relative 'color'
+require_relative 'table'
 
 module Salus
   class Report
+    include Color
+    include Table
+
     class ExportReportError < StandardError; end
 
     NUM_CHAR_IN_BAR = 20
     BAR = ('=' * NUM_CHAR_IN_BAR).freeze
     SPECIAL_BAR = ('#' * NUM_CHAR_IN_BAR).freeze
-
-    SCAN_RESULT_WORD = {
-      true => 'passed',
-      false => 'failed'
-    }.freeze
 
     CONTENT_TYPE_FOR_FORMAT = {
       'json' => 'application/json',
@@ -20,43 +20,18 @@ module Salus
       'txt'  => 'text/plain'
     }.freeze
 
-    def initialize(report_uris: [], project_name: '', custom_info: '')
+    def initialize(report_uris: [], enforced_scanners: [], project_name: '', custom_info: '')
       @report_uris = report_uris   # where we will send this report
+      @enforced_scanners = enforced_scanners.to_a
       @project_name = project_name # the project_name we are scanning
-      @scans = {}                  # scan logs
-      @info = {}                   # info about Salus execution
-      @errors = {}                 # errors from Salus execution
+      @scan_reports = {}
+      @errors = {}
       @custom_info = custom_info   # some additional info to send
       @configuration = {}          # the configuration for this run
     end
 
-    def scan_passed(scanner, result)
-      scan_log(scanner, 'passed', result)
-    end
-
-    def scan_stdout(scanner, stdout)
-      scan_log(scanner, 'stdout', stdout)
-    end
-
-    def scan_stderr(scanner, stderr)
-      scan_log(scanner, 'stderr', stderr)
-    end
-
-    def scan_info(scanner, type, message)
-      @scans[scanner] ||= {}
-      @scans[scanner]['info'] ||= {}
-      @scans[scanner]['info'][type] ||= []
-      @scans[scanner]['info'][type] << message
-    end
-
-    def scan_log(scanner, log_type, log)
-      @scans[scanner] ||= {}
-      @scans[scanner][log_type] = log
-    end
-
-    def salus_info(type, message)
-      @info[type] ||= []
-      @info[type] << message
+    def add_scan_report(scan_report)
+      @scan_reports[scan_report.scanner_name] = scan_report
     end
 
     def salus_runtime_error(error_data)
@@ -84,14 +59,29 @@ module Salus
       @configuration[directive] = value
     end
 
+    def failed?
+      @scan_reports.any? do |scanner_name, scan_report|
+        @enforced_scanners.include?(scanner_name) && scan_report.failed?
+      end
+    end
+
+    def passed?
+      !failed?
+    end
+
     def to_h
+      scan_reports_hsh =
+        @scan_reports
+          .map { |scanner_name, scan_report| [scanner_name, scan_report] }
+          .to_h
+
       {
-        project_name: @project_name,
-        scans: @scans,
-        info: @info,
-        errors: @errors,
-        version: VERSION,
-        custom_info: @custom_info,
+        salus_version: VERSION,
+        project_name:  @project_name,
+        passed:        passed?,
+        scans:         scan_reports_hsh,
+        errors:        @errors,
+        custom_info:   @custom_info,
         configuration: @configuration
       }
     end
@@ -101,54 +91,70 @@ module Salus
     end
 
     # Generates the text report.
-    def to_s(verbose: false)
-      lines = []
-      lines << "#{SPECIAL_BAR} Salus Scan v#{VERSION} for #{@project_name} #{SPECIAL_BAR}"
+    def to_s(verbose: false, use_colors: true, wrap: nil)
+      output = "#{SPECIAL_BAR} Salus Scan v#{VERSION} for #{@project_name} #{SPECIAL_BAR}"
 
-      if @scans.any?
-        @scans.each do |scanner, scan_data|
-          # Scanner title which gives the high level picture
-          scanner_title = "\t#{scanner}"
-          scan_result = SCAN_RESULT_WORD[scan_data['passed']]
-          scanner_title += " => #{scan_result}" unless scan_result.nil?
-          lines << scanner_title
+      description = passed? ? 'PASSED' : 'FAILED'
+      description = colorize(description, (passed? ? :green : :red)) if use_colors
+      output += "\n\nScan result: #{description}"
 
-          # Additional data about the scan. Give stdout, stderr and if verbose, also give info.
-          lines << "STDOUT:\n#{scan_data['stdout']}" unless scan_data['stdout'].nil?
-          lines << "STDERR:\n#{scan_data['stderr']}" unless scan_data['stderr'].nil?
+      if !@scan_reports.empty?
+        # Sort scans:
+        # - enforced before unenforced
+        # - failed before passed
+        # - alphabetically by name
+        scan_reports = @scan_reports.values.sort_by do |scan_report|
+          [
+            @enforced_scanners.include?(scan_report.scanner_name) ? 0 : 1,
+            (scan_report.failed? ? 0 : 1),
+            scan_report.scanner_name
+          ]
+        end
 
-          if verbose
-            scan_data['info']&.each do |type, messages|
-              lines << "INFO - #{type}"
-              lines += messages.map { |message| "\t#{message}" }
+        # Build a summary table of all run scans
+        table = scan_reports.map do |scan_report|
+          required = @enforced_scanners.include?(scan_report.scanner_name)
+
+          color =
+            if scan_report.passed?
+              :green
+            elsif !required
+              :yellow
+            else
+              :red
             end
-          end
+
+          row = [
+            scan_report.scanner_name,
+            "#{scan_report.running_time}s",
+            @enforced_scanners.include?(scan_report.scanner_name) ? 'yes' : 'no',
+            scan_report.passed? ? 'yes' : 'no'
+          ]
+
+          row = row.map { |string| colorize(string, color) } if use_colors
+          row
+        end
+
+        tabulated_scan_results = tabulate(
+          ['Scanner', 'Running Time', 'Required', 'Passed'],
+          table
+        )
+
+        output += "\n\n#{tabulated_scan_results}"
+
+        scan_reports.each do |scan_report|
+          next if scan_report.passed? && !verbose
+
+          output += "\n\n"
+          output += scan_report.to_s(
+            verbose: verbose,
+            use_colors: use_colors,
+            wrap: wrap
+          )
         end
       end
 
-      if verbose && @info.any?
-        lines << "#{BAR} Scan Info #{BAR}"
-        @info.each do |type, messages|
-          lines << type
-          lines += messages.each { |message| "\t#{message}" }
-        end
-      end
-
-      # Only add configuration if verbose mode is on.
-      if verbose
-        lines << "\n"
-        lines << "#{BAR} Salus Configuration #{BAR}"
-        lines += @configuration.map { |type, value| "#{type}: #{value}" }
-      end
-
-      if @errors.any?
-        lines << "\n"
-        lines << "#{BAR} Salus Errors #{BAR}"
-        lines += @errors.map { |klass, data| "\t#{klass} - #{data}" }
-      end
-
-      lines.map! { |line| wrap(line) }
-      lines.join("\n")
+      output
     end
 
     def to_yaml
@@ -182,11 +188,6 @@ module Salus
     end
 
     private
-
-    # Wrap lines to 100 chars by default
-    def wrap(text, line_width = 100)
-      text.gsub(/(.{1,#{line_width}})/, "\\1\n")
-    end
 
     def write_report_to_file(report_file_path, report_string)
       File.open(report_file_path, 'w') { |file| file.write(report_string) }

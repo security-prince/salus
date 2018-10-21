@@ -8,9 +8,9 @@ module Salus::Scanners
 
     ShellResult = Struct.new(:stdout, :stderr, :exit_status)
 
-    def initialize(repository:, report:, config:)
+    def initialize(repository:, scan_report:, config:)
       @repository = repository
-      @report = report
+      @scan_report = scan_report
       @config = config
     end
 
@@ -30,47 +30,55 @@ module Salus::Scanners
 
     # Runs a command on the terminal.
     def run_shell(command, env: {}, stdin_data: '')
-      # If we're passed a string, convert it to an array beofre passing to capture3
-      command = command.split unless command.is_a?(Array)
-      ShellResult.new(*Open3.capture3(env, *command, stdin_data: stdin_data))
+      started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result = ShellResult.new(*Open3.capture3(env, *command, stdin_data: stdin_data))
+      elapsed_time = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at).round(2)
+
+      log(
+        "Ran `#{command}`; " \
+        "finished in #{elapsed_time}s with exit code #{result.exit_status.exitstatus}",
+        verbose: true
+      )
+
+      result
+    end
+
+    def log(string, verbose: false)
+      @scan_report.log(string, verbose: verbose)
     end
 
     # Add a log to the report that this scanner had no findings.
     def report_success
-      @report.scan_passed(name, true)
+      @scan_report.pass
     end
 
     # Add a log to the report that this scanner had findings.
     def report_failure
-      @report.scan_passed(name, false)
+      @scan_report.fail
     end
 
     # Report information about this scan.
     def report_info(type, message)
-      @report.scan_info(name, type, message)
+      @scan_report.info(type, message)
     end
 
     # Report the STDOUT from the scanner.
     def report_stdout(stdout)
-      @report.scan_stdout(name, stdout)
+      @scan_report.info(:stdout, stdout)
     end
 
     # Report the STDERR from the scanner.
     def report_stderr(stderr)
-      @report.scan_stderr(name, stderr)
+      @scan_report.info(:stderr, stderr)
     end
 
     # Report an error in a scanner.
-    def report_error(error_data)
-      unless error_data.is_a?(Hash)
-        raise "`report_error` must take in a hash, not a #{error_data.class}"
-      end
-
-      @report.salus_error(name, error_data)
+    def report_error(message)
+      @scan_report.error(message: message)
     end
 
     def record_dependency_info(info, dependency_file)
-      report_info('dependency', { dependency_file: dependency_file }.merge(info))
+      @scan_report.info('dependency', { dependency_file: dependency_file }.merge(info))
     end
   end
 end
