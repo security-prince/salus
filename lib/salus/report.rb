@@ -72,7 +72,7 @@ module Salus
     def to_h
       scan_reports_hsh =
         @scan_reports
-          .map { |scanner_name, scan_report| [scanner_name, scan_report] }
+          .map { |scanner_name, scan_report| [scanner_name, scan_report.to_h] }
           .to_h
 
       {
