@@ -3,10 +3,7 @@ require_relative '../../../spec_helper.rb'
 describe Salus::Scanners::Base do
   let(:repository) { Salus::Repo.new('spec/fixtures/ruby_gem') }
   let(:config) { { 'ignore' => [] } }
-  let(:report) { Salus::Report.new }
-  let(:scanner) do
-    Salus::Scanners::Base.new(repository: repository, report: report, config: config)
-  end
+  let(:scanner) { Salus::Scanners::Base.new(repository: repository, config: config) }
 
   describe '#run' do
     it 'should raise an exception since this is an abstract function' do

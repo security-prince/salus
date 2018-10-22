@@ -13,17 +13,15 @@ module Salus::Scanners
         if shell_return.success?
           dependencies = JSON.parse(shell_return.stdout)
           dependencies.each do |name, version|
-            record_dependency_info(
-              {
-                type: 'python_requirement',
-                name: name,
-                version: version
-              },
-              'requirements.txt'
+            report_dependency(
+              file: 'requirements.txt',
+              type: 'python_requirement',
+              name: name,
+              version: version
             )
           end
         else
-          report_error('message' => shell_return.stderr)
+          report_error(shell_return.stderr)
         end
       end
     end

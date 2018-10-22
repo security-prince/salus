@@ -9,8 +9,8 @@ module Salus::Scanners
 
     def run
       exceptions = @config['exceptions']
-
       created_package_lock = false
+
       if !@repository.package_lock_json_present?
         Dir.chdir(@repository.path_to_repo) do
           report_info(
@@ -38,12 +38,15 @@ module Salus::Scanners
           report_info('npm_audit_output', npm_audit_report)
 
           # Report ignored advisories after validating the keys all exist
-          exceptions&.each do |exception|
-            if exception.keys.sort != %w[advisory_id changed_by notes]
-              report_error("The exception #{exception} doesn't have a proper format! Please ensure"\
-              ' that each exception has an `advisory_id`, `changed_by`, and `notes` field!')
+          if !exceptions.nil?
+            # FIXME(as3richa): emit some sort of warning or logline
+            # for exceptions that don't conform to the spec
+            exceptions = exceptions.select do |exception|
+              exception.is_a?(Hash) &&
+                exception.keys.sort == %w[advisory_id changed_by notes]
             end
-            report_info('exceptions', exception)
+
+            report_info('exceptions', exceptions)
           end
 
           exception_ids = exceptions&.map { |x| x['advisory_id'] } || []
@@ -51,10 +54,10 @@ module Salus::Scanners
 
           active_vuln_ids.empty? ? report_success : report_failure
         end
-
-        # Cleanup, mostly for local dev since we run in Docker normally
-        File.delete('package-lock.json') if created_package_lock
       end
+    ensure
+      # Cleanup, mostly for local dev since we run in Docker normally
+      File.delete('package-lock.json') if created_package_lock
     end
 
     def should_run?

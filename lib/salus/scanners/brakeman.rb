@@ -31,7 +31,7 @@ module Salus::Scanners
           report_info('brakeman_report', brakeman_report)
         else
           report_info('exit_code', shell_return.status)
-          report_error('message' => shell_return.stderr)
+          report_error(shell_return.stderr)
           report_stderr(shell_return.stderr)
         end
       end
