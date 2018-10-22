@@ -1,4 +1,11 @@
+#!/usr/bin/env python3
+
 import json
+from sys import argv
+from os import chdir
+
+path = '.' if len(argv) <= 1 else argv[1]
+chdir(path)
 
 try: # for pip >= 10
     from pip._internal.req import parse_requirements

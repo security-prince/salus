@@ -32,16 +32,8 @@ describe Salus::Report do
     report.configuration_source(config_source_1)
     report.configuration_source(config_source_2)
     report.configuration_directive(config_directive, config_directive_value)
-    report.scan_passed(scanner_1, scanner_1_passed)
-    report.scan_info(scanner_1, scanner_1_info_type_1, scanner_1_info_type_1_message_1)
-    report.scan_info(scanner_1, scanner_1_info_type_1, scanner_1_info_type_1_message_2)
-    report.scan_info(scanner_1, scanner_1_info_type_2, scanner_1_info_type_2_message_1)
-    report.scan_stdout(scanner_1, scanner_1_stdout)
-    report.scan_info(scanner_2, scanner_1_info_type_1, scanner_1_info_type_1_message_1)
-    report.scan_stderr(scanner_2, scanner_2_stderr)
-    report.salus_error(salus_error_1_class, salus_error_1_data)
-    report.salus_error(salus_error_2_class, salus_error_2_data)
-    report.salus_runtime_error(salus_runtime_error_data)
+    report.error(salus_error_1_class, salus_error_1_data)
+    report.error(salus_error_2_class, salus_error_2_data)
     report
   end
 
